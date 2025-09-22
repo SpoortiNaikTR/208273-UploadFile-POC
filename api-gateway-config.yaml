@@ -1,0 +1,297 @@
+openapi: 3.0.0
+info:
+  title: S3 Multipart Upload REST API
+  version: 1.0.0
+  description: REST API for S3 multipart upload operations
+
+servers:
+  - url: https://wxc200aa9c.execute-api.us-east-1.amazonaws.com/dev
+    description: Development environment
+
+paths:
+  /files:
+    get:
+      summary: List files and folders
+      parameters:
+        - name: prefix
+          in: query
+          description: Folder prefix to list
+          required: false
+          schema:
+            type: string
+        - name: flat
+          in: query
+          description: Return flat list of files
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: List of files and folders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  folders:
+                    type: array
+                    items:
+                      type: string
+                  files:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        size:
+                          type: integer
+                        lastModified:
+                          type: string
+                          format: date-time
+
+  /files/{key}/download-url:
+    get:
+      summary: Get download URL for a file
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: File key
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Download URL
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+
+  /files/{key}/download-info:
+    get:
+      summary: Get download information for a file
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: File key
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Download information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+                  type:
+                    type: string
+                    enum: [public, gated]
+                  downloadType:
+                    type: string
+                    enum: [cdn, presigned]
+
+  /uploads:
+    post:
+      summary: Start multipart upload
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fileName
+                - fileType
+              properties:
+                fileName:
+                  type: string
+                  description: Name of the file to upload
+                fileType:
+                  type: string
+                  description: MIME type of the file
+      responses:
+        '200':
+          description: Upload ID for multipart upload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  uploadId:
+                    type: string
+
+  /uploads/{uploadId}/parts/{partNumber}:
+    get:
+      summary: Get presigned URL for part upload
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          description: Upload ID from start upload
+          schema:
+            type: string
+        - name: partNumber
+          in: path
+          required: true
+          description: Part number (1-based)
+          schema:
+            type: integer
+        - name: fileName
+          in: query
+          required: true
+          description: Name of the file being uploaded
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Presigned URL for part upload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  url:
+                    type: string
+
+  /uploads/{uploadId}/complete:
+    post:
+      summary: Complete multipart upload
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          description: Upload ID from start upload
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - fileName
+                - parts
+              properties:
+                fileName:
+                  type: string
+                  description: Name of the file being uploaded
+                parts:
+                  type: array
+                  description: Array of completed parts
+                  items:
+                    type: object
+                    properties:
+                      ETag:
+                        type: string
+                      PartNumber:
+                        type: integer
+      responses:
+        '200':
+          description: Upload completed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  location:
+                    type: string
+                    description: S3 location of the uploaded file
+
+  /uploads/{uploadId}:
+    delete:
+      summary: Abort multipart upload
+      parameters:
+        - name: uploadId
+          in: path
+          required: true
+          description: Upload ID to abort
+          schema:
+            type: string
+        - name: fileName
+          in: query
+          required: true
+          description: Name of the file being uploaded
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Upload aborted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  aborted:
+                    type: boolean
+
+  /folders:
+    post:
+      summary: Create a new folder
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - key
+              properties:
+                key:
+                  type: string
+                  description: Folder key/path
+      responses:
+        '200':
+          description: Folder created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  key:
+                    type: string
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+
+security:
+  - ApiKeyAuth: []
+
+# CORS configuration
+x-amazon-apigateway-cors:
+  allowCredentials: true
+  allowHeaders:
+    - "Content-Type"
+    - "X-Amz-Date"
+    - "Authorization"
+    - "X-Api-Key"
+    - "X-Amz-Security-Token"
+  allowMethods:
+    - "GET"
+    - "POST"
+    - "PUT"
+    - "DELETE"
+    - "OPTIONS"
+  allowOrigins:
+    - "*"
+  exposeHeaders:
+    - "Content-Type"
+    - "X-Amz-Date"
+    - "Authorization"
+    - "X-Api-Key"
+    - "X-Amz-Security-Token"
+  maxAge: 86400 
