@@ -1,4 +1,3 @@
-// const BASE_URL = 'https://wxc200aa9c.execute-api.us-east-1.amazonaws.com/dev';
 const BASE_URL = 'https://i33abzt327.execute-api.us-east-1.amazonaws.com/dev';
 
 export async function startUpload(fileName, fileType) {
@@ -66,38 +65,6 @@ export async function abortUpload(fileName, uploadId) {
   return res.json();
 }
 
-// export async function getDownloadUrl(key) {
-//   const url = `${BASE_URL}/files/${encodeURIComponent(key)}/download-url`;
-//   const res = await fetch(url, {
-//     method: 'GET',
-//     headers: {
-//       'Content-Type': 'application/json',
-//     },
-//   });
-//   return res.json();
-// }
-
-// export async function getDownloadInfo(key) {
-//   const url = `${BASE_URL}/files/${encodeURIComponent(key)}/download-info`;
-//   const res = await fetch(url, {
-//     method: 'GET',
-//     headers: {
-//       'Content-Type': 'application/json',
-//     },
-//   });
-//   const text = await res.text();
-//   try {
-//     const data = JSON.parse(text);
-//     if (!res.ok) {
-//       console.error('getDownloadInfo error:', data);
-//     }
-//     return data;
-//   } catch (e) {
-//     console.error('getDownloadInfo non-JSON response:', text);
-//     return {};
-//   }
-// }
-
 export async function listFlat(prefix = '') {
   const url = `${BASE_URL}/files?prefix=${encodeURIComponent(prefix)}&flat=true`;
   const res = await fetch(url, {
@@ -122,4 +89,4 @@ export async function createFolder(folderKey) {
     body: JSON.stringify({ key: folderKey }),
   });
   return res.json();
-}
+} 

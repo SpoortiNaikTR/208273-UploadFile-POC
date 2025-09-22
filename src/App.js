@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
- import { uploadFile } from './uploader';
-import { listS3 ,createFolder} from './api';
+ import { uploadFile } from './services/uploader';
+import { listS3 ,createFolder} from './services/api';
 import './App.css';
 import UploadArea from './components/UploadArea.jsx';
 
@@ -23,10 +23,30 @@ function App() {
   const [newFolderError, setNewFolderError] = useState('');
   const fileInputRef = useRef(null);
   const modalFileInputRef = useRef(null);
+  const [shouldAutoOpenFileDialog, setShouldAutoOpenFileDialog] = useState(false);
+  const hasAutoOpenedRef = useRef(false);
 
   useEffect(() => {
     fetchTree('');
   }, []);
+
+  useEffect(() => {
+    if (!isUploadModalOpen) {
+      hasAutoOpenedRef.current = false;
+    }
+  }, [isUploadModalOpen]);
+
+  useEffect(() => {
+    if (isUploadModalOpen && shouldAutoOpenFileDialog && !hasAutoOpenedRef.current) {
+      hasAutoOpenedRef.current = true;
+      setTimeout(() => {
+        if (modalFileInputRef.current) {
+          modalFileInputRef.current.click();
+        }
+        setShouldAutoOpenFileDialog(false);
+      }, 0);
+    }
+  }, [isUploadModalOpen, shouldAutoOpenFileDialog]);
 
   const fetchTree = async (pfx = '') => {
     setStatus('Loading...');
@@ -51,11 +71,9 @@ function App() {
       setTreeData([...tree, ...fileNodes]);
       setStatus('');
 
-      // Cache count for current folder
       const currentCount = folders.length + files.length;
       setFolderCounts(prev => ({ ...prev, [pfx]: currentCount }));
 
-      // Preload counts for visible folders (best-effort, async)
       const toLoad = folders.filter(f => !(f in folderCounts)).slice(0, 50);
       Promise.all(toLoad.map(async (f) => {
         try {
@@ -65,7 +83,6 @@ function App() {
         } catch {}
       }));
 
-      // Auto-open the first top-level folder once on initial load
       if (!initializedRoot && !pfx && folders.length > 0) {
         setInitializedRoot(true);
         await goToPrefix(folders[0]);
@@ -78,7 +95,6 @@ function App() {
 const toggleExpand = async (node) => {
   if (node.type !== 'folder') return;
 
-  // Update prefix and path
   setPrefix(node.key);
   const parts = node.key.split('/').filter(Boolean);
   setPath(parts);
@@ -106,7 +122,6 @@ const toggleExpand = async (node) => {
       })),
     ];
 
-    // Cache count for expanded node
     const expandedCount = folders.length + files.length;
     setFolderCounts(prev => ({ ...prev, [node.key]: expandedCount }));
   }
@@ -114,7 +129,6 @@ const toggleExpand = async (node) => {
   setTreeData([...treeData]);
 };
 
-// Navigate into a folder prefix and reload its contents in the table view
 const goToPrefix = async (pfx) => {
   const clean = pfx.endsWith('/') ? pfx : `${pfx}/`;
   setPrefix(clean);
@@ -123,16 +137,10 @@ const goToPrefix = async (pfx) => {
   await fetchTree(clean);
 };
 
-// Render the clicked path (left sidebar)
 const renderClickedPath = () => {
   return (
     <div className="clicked-path">
       <div className="path-item root" onClick={() => { setPrefix(''); setPath([]); fetchTree(''); }}>
-        {/* <span className="path-icon" aria-hidden>📂</span> */}
-        {/* <span className="path-label">Help and support S3 file storage</span> */}
-        {/* {folderCounts[''] !== undefined && (
-          <span className="count">({folderCounts['']})</span>
-        )} */}
       </div>
       {path.map((segment, idx) => {
         const segPrefix = path.slice(0, idx + 1).join('/') + '/';
@@ -182,7 +190,6 @@ const handleCreateFolder = async () => {
     await createFolder(folderKey);
     setStatus('Folder created');
 
-    // Refresh the current folder listing so the new folder appears
     await fetchTree(prefix);
   } catch (err) {
     console.error(err);
@@ -210,7 +217,6 @@ const doUpload = async (file) => {
       return newProgress;
     });
 
-    // Refresh the current folder listing so the new file appears
     await fetchTree(prefix);
 
     return result;
@@ -229,9 +235,8 @@ const doUpload = async (file) => {
 const handleMultipleUploads = async (files) => {
   if (files.length === 0) return;
   
-  setStatus(``);
+  setStatus('');
   
-  // Add files to upload queue immediately
   const newUploads = files.map(file => ({
     file,
     fileId: `${file.name}-${Date.now()}-${Math.random()}`,
@@ -240,11 +245,10 @@ const handleMultipleUploads = async (files) => {
   
   setUploadQueue(prev => [...prev, ...newUploads]);
   
-  // Start uploading files from the queue
   for (const uploadItem of newUploads) {
     try {
       uploadItem.status = 'uploading';
-      setUploadQueue(prev => [...prev]); // Trigger re-render
+      setUploadQueue(prev => [...prev]);
       
       const uploadFileWithPrefix = new File([uploadItem.file], prefix ? prefix + uploadItem.file.name : uploadItem.file.name, { type: uploadItem.file.type });
       const result = await uploadFile(uploadFileWithPrefix, (progressValue) => {
@@ -259,7 +263,6 @@ const handleMultipleUploads = async (files) => {
         return newProgress;
       });
 
-      // Refresh the current folder listing so the new file appears
       await fetchTree(prefix);
       
     } catch (err) {
@@ -273,14 +276,13 @@ const handleMultipleUploads = async (files) => {
     }
   }
   
-  setStatus(``);
+  setStatus('');
 };
 
 const onInputChange = async (e) => {
   const files = Array.from(e.target.files || []);
   if (files.length > 0) {
     await handleMultipleUploads(files);
-    // Reset the input value to allow re-uploading the same files
     e.target.value = '';
   }
 };
@@ -290,7 +292,7 @@ const onModalFileChange = async (e) => {
   if (files.length > 0) {
     await handleMultipleUploads(files);
     e.target.value = '';
-    setIsUploadModalOpen(true); // keep modal open to show progress
+    setIsUploadModalOpen(true);
   }
 };
 
@@ -328,33 +330,21 @@ const onModalFileChange = async (e) => {
           {node.type === 'folder' ? (
             <span></span>
           ) : (
-            <span className="file-path-with-icon">
-              <span className="path-ellipsis" style={{ whiteSpace: 'nowrap', textOverflow: 'ellipsis',maxWidth:'300px',marginLeft:'100px' }}>{node.key}</span>
-              <span className="file-svg" aria-hidden>
-                <svg width="25" height="24" viewBox="0 0 25 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <mask id="path-1-inside-1_197_28367" fill="white">
-                    <path d="M0.714355 0H24.7144V24H0.714355V0Z"/>
-                  </mask>
-                  <path d="M0.714355 0H24.7144V24H0.714355V24Z" fill="white" fill-opacity="0.01"/>
-                  <path d="M0.714355 24H1.71436V0H0.714355H-0.285645V24H0.714355Z" fill="white" fill-opacity="0.01" mask="url(#path-1-inside-1_197_28367)"/>
-                  <path d="M5.71436 19H14.7144V16H15.7144V19V20H14.7144H5.71436H4.71436V19V10V9H5.71436H8.71436V10H5.71436V19ZM10.7144 14H19.7144V5H10.7144V14ZM9.71436 15V14V5V4H10.7144H19.7144H20.7144V5V14V15H19.7144H10.7144H9.71436Z" fill="#212223"/>
-                </svg>
-              </span>
-            </span>
+            <span title={node.key}>{node.key}</span>
           )}
         </td>
-        <td className="cell file-type" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {node.type === 'file' ? (
-            <span>{node.name.split('.').pop() || 'Unknown'}</span>
+        <td className="cell filetype-cell">
+          {node.type === 'folder' ? (
+            <span>—</span>
           ) : (
-            <span></span>
+            <span>{(node.key.split('.').pop() || '').toUpperCase()}</span>
           )}
         </td>
-        <td className="cell file-size" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {node.type === 'file' ? (
-            <span>{formatBytes(node.size)}</span>
+        <td className="cell filesize-cell">
+          {node.type === 'folder' ? (
+            <span>—</span>
           ) : (
-            <span></span>
+            <span>{typeof node.size === 'number' ? `${Math.round(node.size / (1024 * 1024))} MB` : '—'}</span>
           )}
         </td>
       </tr>
@@ -385,11 +375,11 @@ const onModalFileChange = async (e) => {
 
   const folderCount = treeData.filter(n => n.type === 'folder').length;
  
-  const activeFolderName = path.length > 0 ? path[path.length - 1] : 'Root';
+  const activeFolderName = path.length > 0 ? path[path.length - 1] : 'Help and support S3 file storage';
 
   const isInternalFolder = () => {
-    const name = (activeFolderName || '').toLowerCase();
-    return name.includes('internal') || name.includes('gated') || name.includes('private');
+    const p = prefix.toLowerCase();
+    return p.includes('/help_internal/') || p.startsWith('help_internal/');
   };
 
   const isExternalFolder = () => {
@@ -404,33 +394,24 @@ const onModalFileChange = async (e) => {
   };
 
   const handleCreateFolderSubmit = async () => {
-    const raw = (newFolderName || '').trim();
-    if (!raw) {
-      setNewFolderError('Enter a folder name.');
+    if (!newFolderName.trim()) {
+      setNewFolderError('Folder name is required');
       return;
     }
+
     try {
-      setNewFolderError('');
-      setStatus('Creating folder...');
-      const folderKey = prefix + raw + '/';
-      await createFolder(folderKey);
-      setStatus('Folder created');
+      await createFolder(prefix + newFolderName.trim() + '/');
       setIsCreateModalOpen(false);
       setNewFolderName('');
-      // Navigate into the new folder and refresh
-      setPrefix(folderKey);
-      const parts = folderKey.split('/').filter(Boolean);
-      setPath(parts);
-      await fetchTree(folderKey);
-    } catch (e) {
+      setNewFolderError('');
+      await fetchTree(prefix);
+    } catch (err) {
       setNewFolderError('Failed to create folder');
-      setStatus('');
     }
   };
 
   const handleCreateFolderKey = (e) => {
     if (e.key === 'Enter') {
-      e.preventDefault();
       handleCreateFolderSubmit();
     }
   };
@@ -450,7 +431,7 @@ const onModalFileChange = async (e) => {
               <div className="page-subtitle" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span aria-hidden style={{ display: 'inline-flex' }}>
                   {
-                    isInternalFolder()?
+                    isInternalFolder()? (
                     <svg width="133" height="28" viewBox="0 0 133 28" fill="none" xmlns="http://www.w3.org/2000/svg">
 <g filter="url(#filter0_d_197_29145)">
 <rect x="2" y="2" width="129" height="24" rx="12" fill="#AB3300"/>
@@ -471,11 +452,9 @@ const onModalFileChange = async (e) => {
 </filter>
 </defs>
 </svg>
-
-                  :
-                  ""
-
-
+                    ) : (
+                      ""
+                    )
                   }
                 
                 </span>
@@ -488,7 +467,7 @@ const onModalFileChange = async (e) => {
             </div>
           </header>
           <div className="actions">
-            <button type="button" className="btn btn-primary" onClick={() => setIsUploadModalOpen(true)}>
+            <button type="button" className="btn btn-primary" onClick={() => { setIsUploadModalOpen(true); setShouldAutoOpenFileDialog(true); }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', marginRight: 8 }}>
                 <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M8.34375 0.40625L12.3438 4.40625L12.6875 4.75L12 5.46875L11.625 5.125L8.5 1.96875V10.5V11H7.5V10.5V1.96875L4.34375 5.125L4 5.46875L3.28125 4.75L3.625 4.40625L7.625 0.40625L8 0.0625L8.34375 0.40625ZM2 10.5V15H14V10.5V10H15V10.5V15.5V16H14.5H1.5H1V15.5V10.5V10H2V10.5Z" fill="#FAFAFA"/>

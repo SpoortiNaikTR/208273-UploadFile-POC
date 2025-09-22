@@ -81,6 +81,4 @@ export async function uploadFile(file, onProgress) {
     }
     throw error;
   }
-}
-
-
+} 
