@@ -3,6 +3,12 @@ import React, { useState, useRef, useEffect } from 'react';
 import { listS3 ,createFolder} from './services/api';
 import './App.css';
 import UploadArea from './components/UploadArea.jsx';
+import ClickedPath from './components/ClickedPath.jsx';
+import ActionsBar from './components/ActionsBar.jsx';
+import FileTable from './components/FileTable.jsx';
+import StatusBar from './components/StatusBar.jsx';
+import UploadModal from './components/UploadModal.jsx';
+import CreateFolderModal from './components/CreateFolderModal.jsx';
 
 function App() {
   const [progress, setProgress] = useState({});
@@ -190,7 +196,10 @@ const handleCreateFolder = async () => {
     await createFolder(folderKey);
     setStatus('Folder created');
 
-    await fetchTree(prefix);
+    setPrefix(folderKey);
+    const parts = folderKey.split('/').filter(Boolean);
+    setPath(parts);
+    await fetchTree(folderKey);
   } catch (err) {
     console.error(err);
     setStatus('Failed to create folder');
@@ -400,11 +409,15 @@ const onModalFileChange = async (e) => {
     }
 
     try {
-      await createFolder(prefix + newFolderName.trim() + '/');
+      const folderKey = prefix + newFolderName.trim() + '/';
+      await createFolder(folderKey);
       setIsCreateModalOpen(false);
       setNewFolderName('');
       setNewFolderError('');
-      await fetchTree(prefix);
+      setPrefix(folderKey);
+      const parts = folderKey.split('/').filter(Boolean);
+      setPath(parts);
+      await fetchTree(folderKey);
     } catch (err) {
       setNewFolderError('Failed to create folder');
     }
@@ -421,7 +434,12 @@ const onModalFileChange = async (e) => {
       <div className="layout-two">
         <aside className="sidebar">
           <div className="sidebar-title">Filepath</div>
-          {renderClickedPath()}
+          <ClickedPath
+            path={path}
+            folderCounts={folderCounts}
+            onRootClick={() => { setPrefix(''); setPath([]); fetchTree(''); }}
+            onCrumbClick={handleBreadcrumbClick}
+          />
         </aside>
 
         <main className="main">
@@ -466,74 +484,15 @@ const onModalFileChange = async (e) => {
               </div>
             </div>
           </header>
-          <div className="actions">
-            <button type="button" className="btn btn-primary" onClick={() => { setIsUploadModalOpen(true); setShouldAutoOpenFileDialog(true); }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', marginRight: 8 }}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M8.34375 0.40625L12.3438 4.40625L12.6875 4.75L12 5.46875L11.625 5.125L8.5 1.96875V10.5V11H7.5V10.5V1.96875L4.34375 5.125L4 5.46875L3.28125 4.75L3.625 4.40625L7.625 0.40625L8 0.0625L8.34375 0.40625ZM2 10.5V15H14V10.5V10H15V10.5V15.5V16H14.5H1.5H1V15.5V10.5V10H2V10.5Z" fill="#FAFAFA"/>
-                </svg>
-              </span>
-              Upload file
-            </button>
-            <input ref={fileInputRef} id="file-input" type="file" multiple onChange={onInputChange} style={{ display: 'none' }} />
-            <button className="btn" onClick={openCreateModal} disabled={isUploading}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', marginRight: 8 }}>
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M1 1H7L8.5 3H15H16V4V14V15H15H1H0V14V2V1H1ZM8.5 4H8L7.6875 3.625L6.5 2H1V14H15V4H8.5ZM8.5 6V6.5V8.5H10.5H11V9.5H10.5H8.5V11.5V12H7.5V11.5V9.5H5.5H5V8.5H5.5H7.5V6.5V6H8.5Z" fill="#1F1F1F"/>
-                </svg>
-              </span>
-              Create folder
-            </button>
-          </div>
+          <ActionsBar
+            onOpenUpload={() => { setIsUploadModalOpen(true); setShouldAutoOpenFileDialog(true); }}
+            onCreateFolderClick={openCreateModal}
+            isUploading={isUploading}
+            fileInputRef={fileInputRef}
+            onInputChange={onInputChange}
+          />
 
-          <section className="card">
-            {(treeData.length > 0 || uploadQueue.length > 0) ? (
-              <table className="table" style={{ 
-                tableLayout: 'fixed',
-                width: '100%',
-                whiteSpace: 'nowrap'
-              }}>
-                <thead style={{ backgroundColor: '#DAE4ED' }}>
-                  <tr>
-                    <th style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '25%' }}>Folder name</th>
-                    <th style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '50%' }}>Filepath</th>
-                    <th style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '15%' }}>File type</th>
-                    <th style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '10%' }}>File size</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {renderTableRows()}
-                </tbody>
-              </table>
-            ) : (
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                justifyContent: 'center',
-                padding: 40,
-                color: '#888'
-              }}>
-                <div style={{
-                  width: 72,
-                  height: 72,
-                  borderRadius: '50%',
-                  border: '3px solid #E44F13',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginBottom: 16,
-                  color: '#E44F13',
-                  fontSize: 36,
-                  fontWeight: 600
-                }}>!</div>
-                <div style={{ fontSize: 24, fontWeight: 600, color: '#333' }}>No files here yet</div>
-                <div style={{ marginTop: 8, color: '#666', textAlign: 'center' }}>
-                  Get started by uploading a file or creating a folder.
-                </div>
-              </div>
-            )}
-          </section>
+          <FileTable treeData={treeData} uploadQueue={uploadQueue} renderTableRows={renderTableRows} />
 
           {treeData.length > 0 && (
             <footer className="pagination">
@@ -555,72 +514,32 @@ const onModalFileChange = async (e) => {
             </footer>
           )}
 
-          {status && (
-            <div className="status-bar">
-              {isUploading && <span className="spinner" />}
-              <span style={{ marginLeft: isUploading ? 8 : 0 }}>{status}</span>
-            </div>
-          )}
+          <StatusBar status={status} isUploading={isUploading} />
         </main>
       </div>
 
-      {isUploadModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsUploadModalOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Upload file</h2>
-              <button className="modal-close" onClick={() => setIsUploadModalOpen(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              <div className="modal-disclaimer"><strong>Disclaimer:</strong></div>
-              <UploadArea
-                variant="modal"
-                onFilesSelected={handleMultipleUploads}
-                uploadQueue={uploadQueue}
-                progress={progress}
-                completedUploads={completedUploads}
-                failedUploads={failedUploads}
-                currentPath={prefix || '/'}
-              />
-            </div>
-            <div className="modal-footer">
-              <button className="btn" onClick={() => setIsUploadModalOpen(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={() => modalFileInputRef.current && modalFileInputRef.current.click()}>Upload file</button>
-              <input ref={modalFileInputRef} type="file" multiple onChange={onModalFileChange} style={{ display: 'none' }} />
-            </div>
-          </div>
-        </div>
-      )}
+      <UploadModal
+        open={isUploadModalOpen}
+        onClose={() => setIsUploadModalOpen(false)}
+        modalFileInputRef={modalFileInputRef}
+        onModalFileChange={onModalFileChange}
+        uploadQueue={uploadQueue}
+        progress={progress}
+        completedUploads={completedUploads}
+        failedUploads={failedUploads}
+        currentPath={prefix || '/'}
+        onFilesSelected={handleMultipleUploads}
+      />
 
-      {isCreateModalOpen && (
-        <div className="modal-overlay" onClick={() => setIsCreateModalOpen(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h2>Create folder</h2>
-              <button className="modal-close" onClick={() => setIsCreateModalOpen(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              <label htmlFor="new-folder" style={{ display: 'block', fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Folder name*</label>
-              <input
-                id="new-folder"
-                className="input"
-                placeholder="[New+folder+name]"
-                value={newFolderName}
-                onChange={(e) => { setNewFolderName(e.target.value); setNewFolderError(''); }}
-                onKeyDown={handleCreateFolderKey}
-                style={{ width: '100%', height: 44 }}
-              />
-              {newFolderError && (
-                <div className="modal-error" style={{ color: '#D64000', marginTop: 8 }}>{newFolderError}</div>
-              )}
-            </div>
-            <div className="modal-footer">
-              <button className="btn" onClick={() => setIsCreateModalOpen(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleCreateFolderSubmit}>Create folder</button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CreateFolderModal
+        open={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        newFolderName={newFolderName}
+        setNewFolderName={(v) => { setNewFolderName(v); setNewFolderError(''); }}
+        newFolderError={newFolderError}
+        onSubmit={handleCreateFolderSubmit}
+        onKeyDown={handleCreateFolderKey}
+      />
     </div>
   );
 }
